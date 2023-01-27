@@ -120,15 +120,18 @@ export function initializeGameData(gameId, game) {
         mpPlayerIdToEntry.put(id, player);
         let sql = `INSERT INTO players (playerId, playerName, teamId, playerAge, playerNumber, primaryPositionCode) VALUES `;
         sql+= `(${id}, "${fullName}", ${currentTeamId}, ${currentAge}, ${primaryNumber}, ${primaryPositionCode}) `;
-        sql += `ON CONFLICT(playerId) DO UPDATE SET playerAge=${playerAge}, teamId=${currentTeamId} playerNumber=${primaryNumber}, primaryPositionCode="${primaryPositionCode}"`;
+        sql += `ON CONFLICT(playerId) DO UPDATE SET playerAge=${playerAge}, teamId=${currentTeamId} playerNumber=${primaryNumber}, primaryPositionCode="${primaryPositionCode}";`;
 
 
         let sql2 = `INSERT INTO nhl_game_player_meta (playerId, teamId, gameId, positionCode) VALUES `
-        sql2 += `(${id}, ${currentTeamId}, ${gameId}, "${primaryPositionCode}")`;
+        sql2 += `(${id}, ${currentTeamId}, ${gameId}, "${primaryPositionCode}");`;
         queries.push(sql, sql2);
-        console.log(sql);
-        console.log(sql2);
     });
+    // now run all the queries to initalize the two tables
+}
+//Used to update the "*lineScore" values in the nhl_games table to reflect the final score (including shootouts)
+export function finalizeGameData(game) {
+
 }
 
 // Query for all games beginning TODAY. For games with status "LIVE", check if a process is being run to poll game stats

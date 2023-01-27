@@ -89,7 +89,6 @@ export async function checkForGameDataUpdates(db, gameId, mpPlayerEntries) {
         const awayTeamUpdates = checkForPlayerUpdates(mpPlayerEntries, awayPlayers);
         mpPlayerEntries = awayTeamUpdates.mpPlayerEntries;
         const homeSQLUpdates = homeTeamUpdates.playerSqlUpdates, awaySQLUpdates = awayTeamUpdates.playerSqlUpdates;
-        // console.log('updates: ' , homeTeamUpdates, '& ', awayTeamUpdates);
         if(homeSQLUpdates.length || awaySQLUpdates.length) {
             const sqlUpdates = homeSQLUpdates.concat(awaySQLUpdates);
             let qrys = [];
@@ -112,29 +111,24 @@ export async function checkForGameDataUpdates(db, gameId, mpPlayerEntries) {
 // Given a game that has just gone LIVE, It should propegate the basic information about the game to nhl_game_meta table
 // This includes: team information and player rosters for both home and away teams
 export function initializeGameData(gameId, game) {
-    const awayTeamData = game.gameData.teams.away;
-    const homeTeamData = game.gameData.teams.home;
-    const venueData = game.gameData.venue;
+    const queries = [];
     const mpPlayerIdToEntry = {};
     game.gameData.players.forEach((player) => {
-        const { id, fullName, primaryNumber, currentAge, active, primaryPosition } = player;
+        const { id, fullName, primaryNumber, currentAge, primaryPosition } = player;
         const currentTeamId = player.currentTeam.id;
+        const primaryPositionCode = primaryPosition.code;
         mpPlayerIdToEntry.put(id, player);
-    });
-    const playerIds = Object.keys(mpPlayerIdToEntry);
-    db.each(`SELECT playerName, teamId, playerNumber, playerAge, primaryPositionCode FROM players WHERE id IN ${playerIds.join(',')}`, (err, player) => {
-        if (err) {
-            throw err;
-        }
-        const playerEntry = mpPlayerIdToEntry[player.id];
-        if(player.playerName == playerEntry.fullName && player.playerNumber && playerEntry.primaryNumber && player.playerAge == playerEntry.currentAge && 
-         player.primaryPositionCode == playerEntry.primaryPosition.code) {
-            delete mpPlayerIdToEntry[player.id];
-        }
-    });
-    if(Object.keys(mpPlayerIdToEntry).length > 0) {
+        let sql = `INSERT INTO players (playerId, playerName, teamId, playerAge, playerNumber, primaryPositionCode) VALUES `;
+        sql+= `(${id}, "${fullName}", ${currentTeamId}, ${currentAge}, ${primaryNumber}, ${primaryPositionCode}) `;
+        sql += `ON CONFLICT(playerId) DO UPDATE SET playerAge=${playerAge}, teamId=${currentTeamId} playerNumber=${primaryNumber}, primaryPositionCode="${primaryPositionCode}"`;
 
-    }
+
+        let sql2 = `INSERT INTO nhl_game_player_meta (playerId, teamId, gameId, positionCode) VALUES `
+        sql2 += `(${id}, ${currentTeamId}, ${gameId}, "${primaryPositionCode}")`;
+        queries.push(sql, sql2);
+        console.log(sql);
+        console.log(sql2);
+    });
 }
 
 // Query for all games beginning TODAY. For games with status "LIVE", check if a process is being run to poll game stats
@@ -145,13 +139,13 @@ export function checkGameStartStatuses(db, games, now) {
         console.log('checking for started games...');
         const mpIdToStatus = {};
         const gamesForStatusUpdate = [];
-        db.all(`SELECT id, gameStatus FROM nhl_games WHERE formatted_date="2023-01-26"`, (err, games) => {
-            console.log('in db all: ', games);
+        db.all(`SELECT id, gameStatus FROM nhl_games WHERE formatted_date="${now}"`, (err, rows) => {
+            console.log('in db all: ', rows);
 
             if (err) {
                 throw err;
             }
-            games.forEach((game) => {
+            rows.data.forEach((game) => {
                 mpIdToStatus.put(game.id, game.gameStatus);
             });
         });
@@ -161,7 +155,7 @@ export function checkGameStartStatuses(db, games, now) {
             console.log('dbGameStatus: ', dbGameStatus);
             if(dbGameStatus && dbGameStatus !== game.status.abstractGameState && game.status.abstractGameState === 'Live') {
                 gamesForStatusUpdate.push(game.gamePk);
-                //initializeGameData(game.gamePk, game);
+                initializeGameData(game.gamePk, game);
             }
         });
         if(gamesForStatusUpdate.length > 0) {
@@ -296,7 +290,8 @@ for (var i=0; i<process.argv.length;i++) {
 let db = openDB();
 db.all(`SELECT id, gameStatus FROM nhl_games WHERE formatted_date="2023-01-26"`, (err, rows) => {
     console.log('err: ', err);
-    console.log('data: ', rows);
+    console.log('data: ', rows.data);
 });
 await sleep(3000);
 */
+

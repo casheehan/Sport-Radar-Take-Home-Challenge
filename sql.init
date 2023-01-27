@@ -1,0 +1,55 @@
+CREATE TABLE IF NOT EXISTS teams(
+	id int,
+	teamName varchar(255),
+	abbreviation varchar(10),
+	firstYearOfPlay YEAR
+)
+
+CREATE TABLE IF NOT EXISTS players(
+    playerId int,
+    playerName varchar(255),
+    teamId int,
+    playerAge tinyint,
+    playerNumber tinyint,
+    primaryPositionCode VARCHAR(1),
+    FOREIGN KEY (playerId) REFERENCES players(playerId),
+    FOREIGN KEY (teamId) REFERENCES teams(id)
+)
+
+CREATE TABLE IF NOT EXISTS nhl_games(
+    id int PRIMARY KEY,
+    gameDate DATE,
+    formattedDate VARCHAR(255),
+    homeTeamId int,
+    awayTeamId int,
+    gameType VARCHAR(1),
+    season VARCHAR(255),
+    gameStatus VARCHAR(50),
+    homeLineScore tinyint DEFAULT 0,
+    awayLineScore tinyint DEFAULT 0,
+    FOREIGN KEY (homeTeamId) REFERENCES teams(id),
+    FOREIGN KEY (awayTeamId) REFERENCES teams(id),
+)
+
+CREATE TABLE IF NOT EXISTS nhl_game_player_meta(
+    playerId int,
+    teamId int,
+    gameId int,
+    positionCode VARCHAR(1),
+    goals tinyint DEFAULT 0,,
+    assists tinyint DEFAULT 0,,
+    shots tinyint DEFAULT 0,
+    hits tinyint DEFAULT 0,,
+    penaltyMinutes int DEFAULT 0,,
+    FOREIGN KEY (playerId) REFERENCES players(playerId),
+    FOREIGN KEY (teamId) REFERENCES teams(id),
+    FOREIGN KEY (gameId) REFERENCES nhl_games(id)
+)
+/*
+Assists
+Goals
+Hits
+Points
+Penalty Minutes
+(etc.)
+*/

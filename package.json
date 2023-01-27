@@ -1,0 +1,42 @@
+{
+  "name": "sport-radar-take-home",
+  "version": "1.0.0",
+  "description": "A take-home challenge furnished by SportRadar to aspiring Software Developers",
+  "main": "index.ts",
+  "babel":
+  {
+    "env": {
+      "test": {
+        "plugins": ["@babel/plugin-transform-modules-commonjs"]
+      }
+    }
+  },
+  "scripts": {
+    "test": "jest",
+    "start": "node index.js main",
+    "start2": "node index.js",
+    "lint": "./node_modules/eslint/bin/eslint.js . --ext .js,.ts"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/casheehan/Sport-Radar-Take-Home-Challenge.git"
+  },
+  "author": "caseycsheehan",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/casheehan/Sport-Radar-Take-Home-Challenge/issues"
+  },
+  "homepage": "https://github.com/casheehan/Sport-Radar-Take-Home-Challenge#readme",
+  "dependencies": {
+    "axios": "^1.2.4",
+    "hapi": "^18.1.0",
+    "jest": "^29.4.1",
+    "moment": "^2.29.4",
+    "sqlite3": "^5.1.4"
+  },
+  "devDependencies": {
+    "@babel/plugin-transform-modules-commonjs": "^7.20.11",
+    "eslint": "^8.32.0"
+  }
+}

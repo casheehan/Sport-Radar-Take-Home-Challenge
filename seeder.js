@@ -28,11 +28,11 @@ export async function seedTeams(db) {
             baseQuery += (index != teams.length - 1 ? ', ' : '')
        });
        console.info(`running QUERY: `, baseQuery);
-        db.all(baseQuery, [], async (err, rows) => {
-        if (err) {
-            throw err;
-        }
-         });
+        db.all(baseQuery, [], async (err) => {
+            if (err) {
+                throw err;
+            }
+        });
     });
 }
 export async function seedGames(db, date = null) {
@@ -54,7 +54,7 @@ export async function seedGames(db, date = null) {
             baseQuery += (index != games.length - 1 ? ', ' : '')
        });
        console.info(`running QUERY: `, baseQuery);
-        db.all(baseQuery, [], async (err, rows) => {
+        db.all(baseQuery, [], async (err) => {
         if (err) {
             throw err;
         }
@@ -69,13 +69,5 @@ export function runSeeders() {
 
     } catch (error) {
         console.error(`error running seeders: ` , error.message);
-    }
-}
-
-export function cleanDB() {
-    try {
-        
-    } catch(error) {
-        console.log(`error cleaning database: `, error.message);
     }
 }

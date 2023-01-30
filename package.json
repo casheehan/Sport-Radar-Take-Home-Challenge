@@ -12,10 +12,11 @@
     }
   },
   "scripts": {
-    "test": "jest",
+    "test": "jest --detectOpenHandles",
     "start": "node index.js main",
     "start2": "node index.js",
-    "lint": "./node_modules/eslint/bin/eslint.js . --ext .js,.ts"
+    "lint": "./node_modules/eslint/bin/eslint.js . --ext .js,.ts",
+    "lint:fix": "./node_modules/eslint/bin/eslint.js . --ext .js,.ts --fix"
   },
   "type": "module",
   "repository": {

@@ -1,6 +1,5 @@
 
 jest.useFakeTimers();
-import mockScheduleData from './mock-data/mock-game-schedule.json';
 import mockLiveFeedData from './mock-data/mock-live-feed.json';
 import { doesPlayerNeedUpdate, checkForPlayerUpdates, checkForGameDataUpdates, checkGameStartStatuses, checkGameEndStatuses } from './index.js';
 import { axiosInstance } from './axiosInstance.js';
@@ -16,34 +15,31 @@ describe('Ensure that status updates occur properly when games statuses change '
          }
         }));
     });
-    test('It should update game status once the game is live', () => {
+    test('checkGameStartStatuses:: It should update game status once the game is live', () => {
         const db = jest.mock();
         const now = moment().format('YYYY-MM-DD');
         const liveGames = [{
             gamePk: "foo",
             status: {
                 abstractGameState: "Live"
+            },
+            gameData: {
+                players: { ID8477947: mockLiveFeedData.gameData.players.ID8477947 }
             }
         }];
-        db.run = jest.fn();
-        db.run.mockImplementation(() => {
-            Promise.resolve({changes: 1});
-        });
+        db.run = jest.fn().mockImplementation((sql, callback) => {
+            callback(null, { changes: 1 });
+        })
 
-        db.all = jest.fn();
-        db.all.mockImplementation(()=> {
-            Promise.resolve({
-                error: null, 
-                rows: [{id: 'foo', gameStatus: 'Live'}] 
-            });
+        db.all = jest.fn().mockImplementation((sql, callback) => {
+            callback(null, { data: [{id: 'foo', gameStatus: 'Preview'}]} );
         });
-
         const rowsUpdated = checkGameStartStatuses(db, liveGames, now);
         expect(rowsUpdated).toBeDefined();
-        // expect(rowsUpdated).toBeTruthy();
+        expect(rowsUpdated).toBeTruthy();
     });
 
-    test('It should update game status once the game is final', () => {
+    test('checkGameEndStatuses:: It should update game status once the game is final', () => {
         const db = jest.mock();
         const finalGames = [{
             gamePk: "foo",
@@ -51,22 +47,38 @@ describe('Ensure that status updates occur properly when games statuses change '
                 abstractGameState: "Final"
             }
         }];
-        db.run = jest.fn();
-        db.run.mockImplementation(() => {
-            Promise.resolve({changes: 1});
-        });
+        db.run = jest.fn().mockImplementation((sql, callback) => {
+            callback(null, { changes: 1 });
+        })
 
-        db.each = jest.fn();
-        db.each.mockImplementation(() => {
-            Promise.resolve({
-                error: null,
-                game: [{id: 'foo', gameStatus: 'Live'}]
-            });
+        db.each = jest.fn().mockImplementation((sql, callback) => {
+            callback(null, { id: 'foo' } );
         });
 
         const rowsUpdated = checkGameEndStatuses(db, finalGames);
         expect(rowsUpdated).toBeDefined();
-        // expect(rowsUpdated).toBeTruthy();
+        expect(rowsUpdated).toBeTruthy();
+    });
+
+    test('checkGameEndStatuses:: It should NOT update game status if games are still live', () => {
+        const db = jest.mock();
+        const finalGames = [{
+            gamePk: "foo",
+            status: {
+                abstractGameState: "Live"
+            }
+        }];
+        db.run = jest.fn().mockImplementation((sql, callback) => {
+            callback(null, { changes: 1 });
+        })
+
+        db.each = jest.fn().mockImplementation((sql, callback) => {
+            callback(null, { id: 'foo' } );
+        });
+
+        const rowsUpdated = checkGameEndStatuses(db, finalGames);
+        expect(rowsUpdated).toBeDefined();
+        expect(rowsUpdated).toBeFalsy();
     });
 });
 
@@ -180,7 +192,6 @@ describe('Ensure that valid update rows are furnished', () => {
             });
         });
         const playerToTest =  mockLiveFeedData.liveData.boxscore.teams.home.players.ID8477947;
-        const teamPlayers = [playerToTest];
         let mpPlayerEntries = {};
         mpPlayerEntries[playerToTest.person.id] = {
             id: playerToTest.person.id,
@@ -198,4 +209,8 @@ describe('Ensure that valid update rows are furnished', () => {
         expect(mpPlayerEntriesDelta[playerToTest.person.id].assists).toEqual(1);
     });
 });
+describe('Verify that child process is able to successfully poll for game updates', () => {
+    test('createPlayerEntryMap:: it should create an in-memory map for status checking in the child processes', () => {
 
+    });
+});

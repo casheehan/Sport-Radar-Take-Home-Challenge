@@ -1,28 +1,11 @@
-import hapi from 'hapi';
 import moment from 'moment';
 import { openDB, seedGames  } from './seeder.js';
 import { axiosInstance, handleAxiosError } from './axiosInstance.js';
+import { spawn } from 'child_process';
 
 const GAME_STATUS_POLLING_INTERVAL = 30000;
 const INDIVIDUAL_GAME_POLLING_INTERVAL = 5000;
 
-/*
-const initServer = async () => {
-    const server = hapi.server({
-        port: 8080,
-        host: 'localhost'
-    });
-    server.route({
-        method: 'GET',
-        path: '/nhl/games/live',
-        handler: (request, h) => {
-            return 'Foo';
-        }
-    })
-    await server.start();
-    console.log(`Server running on ${server.info.uri}`);
-}
-*/
 
 // Check whether specific player meta data fields need updated
 export function doesPlayerNeedUpdate(playerEntry, teamPlayerStats) {
@@ -39,7 +22,19 @@ export function doesPlayerNeedUpdate(playerEntry, teamPlayerStats) {
     return false;
 }
 
-// check each of the players in the game for necessary updates
+export function createPlayerEntryMap(db, gameId) {
+    const playerMap = {};
+    const sql = `SELECT * from nhl_game_player_meta WHERE gameId="${gameId}"`;
+    db.each(sql, (error, player) => {
+        if (error) {
+            throw new Error(`error initializing player map: ${error}`);
+        }
+        playerMap[player] = player;
+    });
+    return playerMap;
+}
+
+// Check each of the players in the game for necessary updates
 export function checkForPlayerUpdates(mpPlayerEntries, teamPlayers) {
     const playerSqlUpdates = [];
     Object.keys(teamPlayers).forEach((teamPlayerKey) => {
@@ -65,16 +60,6 @@ export function checkForPlayerUpdates(mpPlayerEntries, teamPlayers) {
 
 /* Check for game data updates, such as player goals, asssits, hits, etc.
  * Update the corresponding DB entries for these players as well as their cached entries
- * player entry {
- *  id: string;
- *  playerName: string;
- *  gameId: string;
- *  assists: int;
- *  goals: int;
- *  hits: int;
- *  penaltyMinutes: int;
- *  positionCode: string;
- * }
  */
 export async function checkForGameDataUpdates(db, gameId, mpPlayerEntries) {
     await axiosInstance.get(`/game/${gameId}/feed/live`).then((response, error) => {
@@ -92,12 +77,12 @@ export async function checkForGameDataUpdates(db, gameId, mpPlayerEntries) {
         if(homeSQLUpdates.length || awaySQLUpdates.length) {
             const sqlUpdates = homeSQLUpdates.concat(awaySQLUpdates);
             let qrys = [];
-            sqlUpdates.forEach((sqlUpdate, index) => {
+            sqlUpdates.forEach((sqlUpdate) => {
                 let qry =  `UPDATE nhl_game_player_meta SET `
                 qry += `${sqlUpdate}`;
                 qrys.push(qry)
             }); 
-            db.all(qrys, (err, updates) => {
+            db.all(qrys, (err) => {
                 if (err) {
                     throw new Error(`Error with bulk update player entries: `, err.message);
                 }
@@ -110,73 +95,96 @@ export async function checkForGameDataUpdates(db, gameId, mpPlayerEntries) {
 
 // Given a game that has just gone LIVE, It should propegate the basic information about the game to nhl_game_meta table
 // This includes: team information and player rosters for both home and away teams
-export function initializeGameData(gameId, game) {
-    const queries = [];
-    const mpPlayerIdToEntry = {};
-    game.gameData.players.forEach((player) => {
-        const { id, fullName, primaryNumber, currentAge, primaryPosition } = player;
-        const currentTeamId = player.currentTeam.id;
-        const primaryPositionCode = primaryPosition.code;
-        mpPlayerIdToEntry.put(id, player);
-        let sql = `INSERT INTO players (playerId, playerName, teamId, playerAge, playerNumber, primaryPositionCode) VALUES `;
-        sql+= `(${id}, "${fullName}", ${currentTeamId}, ${currentAge}, ${primaryNumber}, ${primaryPositionCode}) `;
-        sql += `ON CONFLICT(playerId) DO UPDATE SET playerAge=${playerAge}, teamId=${currentTeamId} playerNumber=${primaryNumber}, primaryPositionCode="${primaryPositionCode}";`;
+export function initializeGameData(db, gameId, game) {
+    try{
+        const queries = [];
+        const mpPlayerIdToEntry = {};
+        Object.keys(game.gameData.players).forEach((playerKey) => {
+            const player = game.gameData.players[playerKey];
+            const { id, fullName, primaryNumber, currentAge, primaryPosition } = player;
+            const currentTeamId = player.currentTeam.id;
+            const primaryPositionCode = primaryPosition.code;
+            mpPlayerIdToEntry[id] =  player;
+
+            let sql = `INSERT INTO players (playerId, playerName, teamId, playerAge, playerNumber, primaryPositionCode) VALUES `;
+            sql+= `(${id}, "${fullName}", ${currentTeamId}, ${currentAge}, ${primaryNumber}, ${primaryPositionCode}) `;
+            sql += `ON CONFLICT(playerId) DO UPDATE SET playerAge=${currentAge}, teamId=${currentTeamId} playerNumber=${primaryNumber}, primaryPositionCode="${primaryPositionCode}";`;
 
 
-        let sql2 = `INSERT INTO nhl_game_player_meta (playerId, teamId, gameId, positionCode) VALUES `
-        sql2 += `(${id}, ${currentTeamId}, ${gameId}, "${primaryPositionCode}");`;
-        queries.push(sql, sql2);
-    });
-    // now run all the queries to initalize the two tables
+            let sql2 = `INSERT INTO nhl_game_player_meta (playerId, teamId, gameId, positionCode) VALUES `
+            sql2 += `(${id}, ${currentTeamId}, ${gameId}, "${primaryPositionCode}");`;
+            queries.push(sql, sql2);
+        });
+        // now run all the queries to initalize the two tables
+        let succeses = 0, errors = 0;
+        queries.forEach((qry) => {
+            db.run(qry, (err) => {
+                if(err) {
+                    errors++;
+                }
+                else {
+                    succeses++;
+                }
+            });
+        });
+        console.info(`Attempt to insert player data resulted in ${succeses} succeses, ${errors} errors`)
+    } catch (error) {
+        console.error('Failed to init game data: ', error);
+    }
 }
 //Used to update the "*lineScore" values in the nhl_games table to reflect the final score (including shootouts)
-export function finalizeGameData(game) {
+/*export function finalizeGameData(db, game) {
 
 }
+*/
 
 // Query for all games beginning TODAY. For games with status "LIVE", check if a process is being run to poll game stats
 // If there is no such process, spin it up and update DB game status to "LIVE"
 export function checkGameStartStatuses(db, games, now) {
     let rowsUpdated = false;
     if(games.length > 0) {
-        console.log('checking for started games...');
-        const mpIdToStatus = {};
-        const gamesForStatusUpdate = [];
-        db.all(`SELECT id, gameStatus FROM nhl_games WHERE formatted_date="${now}"`, (err, rows) => {
-            console.log('in db all: ', rows);
+        try {
+            console.info('checking for started games...');
+            const mpIdToStatus = {};
+            const gamesForStatusUpdate = [];
+            db.all(`SELECT id, gameStatus FROM nhl_games WHERE formatted_date="${now}"`, (err, rows) => {
 
-            if (err) {
-                throw err;
-            }
-            rows.data.forEach((game) => {
-                mpIdToStatus.put(game.id, game.gameStatus);
-            });
-        });
-    
-        games.forEach((game) => {
-            const dbGameStatus = mpIdToStatus[game.gamePk];
-            console.log('dbGameStatus: ', dbGameStatus);
-            if(dbGameStatus && dbGameStatus !== game.status.abstractGameState && game.status.abstractGameState === 'Live') {
-                gamesForStatusUpdate.push(game.gamePk);
-                initializeGameData(game.gamePk, game);
-            }
-        });
-        if(gamesForStatusUpdate.length > 0) {
-            db.run(`UPDATE nhl_games SET gameStatus="Live" WHERE id IN (${gamesForStatusUpdate.join(",")})`, (err) => {
-                if(err) {
-                    throw new Error('failed to update for game status: ', error);
+                if (err) {
+                    throw err;
                 }
-                else {
-                    rowsUpdated = true;
+                rows.data.forEach((game) => {
+                    mpIdToStatus[game.id] =  game.gameStatus;
+                });
+            });
+        
+            games.forEach((game) => {
+                const dbGameStatus = mpIdToStatus[game.gamePk];
+                if(dbGameStatus && dbGameStatus !== game.status.abstractGameState && game.status.abstractGameState === 'Live') {
+                    gamesForStatusUpdate.push(game.gamePk);
+                    initializeGameData(db, game.gamePk, game);
+                    spawn('node', ['index.js', 'child', game.gamePk]);
+                    
                 }
             });
-        }
-        else {
-            console.log('no game starts to update for this interval');
+            if(gamesForStatusUpdate.length > 0) {
+                db.run(`UPDATE nhl_games SET gameStatus="Live" WHERE id IN (${gamesForStatusUpdate.join(",")})`, (err) => {
+                    if(err) {
+                        throw new Error('failed to update for game status: ', err);
+                    }
+                    else {
+                        rowsUpdated = true;
+                    }
+                });
+            }
+            else {
+                console.info('no game starts to update for this interval');
+            }
+        } catch (error) {
+            console.error(`error checking for game starts: ${error.message}`);
         }
     }
     else {
-        console.log('no games currently LIVE');
+        console.info('no games currently LIVE');
     }
     return rowsUpdated;
 }
@@ -184,39 +192,42 @@ export function checkGameStartStatuses(db, games, now) {
 // Reverse of checkGameStartStatuses; check for updates from "LIVE" to "FINAL"
 // Find the associate process to query for game updates and end it, update DB game status to "FINAL"
 export function checkGameEndStatuses(db, games) {
-    const gamesUpdated = false;
-    if(games.length > 0) {
-        console.log('checking for games ending...');
-        const gameIds = [];
-        const gamesForStatusUpdate = [];
-        db.each(`SELECT id FROM nhl_games WHERE gameStatus="Live"`, (err, game) => {
-            if (err) {
-                throw err;
-            }
-            console.log('FOUND GAME: ', game);
-            gameIds.push(game.id);
-        });
-    
-        games.forEach((game) => {
-            if(gameIds.findIndex((gid) => { return gid === game.gamePk}) !== -1 && game.status.abstractGameState == 'Final') {
-                console.log(`game ${game.gamePk} has ended, terminating process.`);
-                gamesForStatusUpdate.push(game.gamePk);
-            }
-        });
-        if(gamesForStatusUpdate.length > 0) {
-            db.run(`UPDATE nhl_games SET gameStatus="Final" WHERE id IN (${gamesForStatusUpdate.join(",")})`, (err, update) => {
-                if(err) {
-                    throw new Error('failed to update for game status: ', error);
+    let gamesUpdated = false;
+    try {
+        if(games.length > 0) {
+            console.info('checking for games ending...');
+            const gameIds = [];
+            const gamesForStatusUpdate = [];
+            db.each(`SELECT id FROM nhl_games WHERE gameStatus="Live"`, (err, game) => {
+                if (err) {
+                    throw err;
                 }
-                rowsUpdated = true;
+                gameIds.push(game.id);
             });
+        
+            games.forEach((game) => {
+                if(gameIds.findIndex((gid) => { return gid === game.gamePk}) !== -1 && game.status.abstractGameState == 'Final') {
+                    console.log(`game ${game.gamePk} has ended, terminating process.`);
+                    gamesForStatusUpdate.push(game.gamePk);
+                }
+            });
+            if(gamesForStatusUpdate.length > 0) {
+                db.run(`UPDATE nhl_games SET gameStatus="Final" WHERE id IN (${gamesForStatusUpdate.join(",")})`, (err) => {
+                    if(err) {
+                        throw new Error('failed to update for game status: ', err);
+                    }
+                    gamesUpdated = true;
+                });
+            }
+            else {
+                console.info('no game finals to update for this interval');
+            }
         }
         else {
-            console.log('no game finals to update for this interval');
+            console.info('no games finished today (yet)');
         }
-    }
-    else {
-        console.log('no games finished today (yet)');
+    } catch (error) {
+        console.error(`error checking for game end statuses: `, error);
     }
     return gamesUpdated;
 }
@@ -259,12 +270,13 @@ function main() {
 }
 
 function child(gameId) {
+    console.info('created child process for game: ', gameId);
     process.on('unhandledRejection', (err) => {
         console.error(`Unhandled Rejection in CHILD Process: ${err}`);
         process.exit(1);
     });
     let db = openDB();
-    let mpPlayerEntries = createPlayerEntryMap(gameId);
+    let mpPlayerEntries = createPlayerEntryMap(db, gameId);
 
     setInterval(() => {
         checkForGameDataUpdates(db, gameId, mpPlayerEntries)
@@ -273,10 +285,6 @@ function child(gameId) {
 
 }
 
-function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
- }
-
 for (var i=0; i<process.argv.length;i++) {
     switch (process.argv[i]) {
         case "main":
@@ -284,17 +292,10 @@ for (var i=0; i<process.argv.length;i++) {
         break;
         case "child":
             child(process.argv[i+1]);
+        break;
         case "seed":
             seedGames();
         break;
     }
 }
-/*
-let db = openDB();
-db.all(`SELECT id, gameStatus FROM nhl_games WHERE formatted_date="2023-01-26"`, (err, rows) => {
-    console.log('err: ', err);
-    console.log('data: ', rows.data);
-});
-await sleep(3000);
-*/
 

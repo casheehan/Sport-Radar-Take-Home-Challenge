@@ -87,6 +87,8 @@ export async function checkForGameDataUpdates(db, gameId, mpPlayerEntries) {
                     throw new Error(`Error with bulk update player entries: `, err.message);
                 }
             });
+            // If there's a player update, we should also check for score update
+            updateGameLineScore(db, game);
         }
     });
     return mpPlayerEntries;
@@ -133,10 +135,26 @@ export function initializeGameData(db, gameId, game) {
     }
 }
 //Used to update the "*lineScore" values in the nhl_games table to reflect the final score (including shootouts)
-/*export function finalizeGameData(db, game) {
-
+export function updateGameLineScore(db, game) {
+    let shouldUpdateScore = false;
+    const gameId = game.gamePk;
+    const homeTeamGoals = game.liveData.linescore.teams.home.goals;
+    const awayTeamGoals = game.liveData.linescore.teams.away.goals;
+    db.each(`SELECT homeLineScore, awayLineScore from nhl_games WHERE id=${gameId}`, (error, game) => {
+        if(error) {
+            console.error(`error getting line score data: ${error}`);
+        }
+        if(game.homeLineScore !== homeTeamGoals || game.awayLineScore !== awayTeamGoals)
+            shouldUpdateScore = true;
+    });
+    if(shouldUpdateScore) {
+        db.run(`UPDATE nhl_games SET homeLineScore=${homeTeamGoals} AND awayLineScore=${awayTeamGoals} WHERE id=${gameId}`, (error) => {
+            if(error)
+                console.error(`failed to update game scores for game ${gameId} with error: ${error}`);
+        });
+    }
 }
-*/
+
 
 // Query for all games beginning TODAY. For games with status "LIVE", check if a process is being run to poll game stats
 // If there is no such process, spin it up and update DB game status to "LIVE"
@@ -294,7 +312,7 @@ for (var i=0; i<process.argv.length;i++) {
             child(process.argv[i+1]);
         break;
         case "seed":
-            seedGames();
+            seedGames(process.argv[i+1]);
         break;
     }
 }

@@ -15,7 +15,7 @@ export function openDB() {
     return db;
 }
 
-export async function seedTeams(db) {
+export async function seedTeams() {
     let baseQuery = `INSERT INTO teams (id, teamName, abbreviation, firstYearOfPlay) VALUES `
     await axiosInstance.get('/teams').then((result, error) => {
         if( error ) {
@@ -35,7 +35,8 @@ export async function seedTeams(db) {
         });
     });
 }
-export async function seedGames(db, date = null) {
+export async function seedGames(date = null) {
+    let db = openDB();
     const queryUrl = date ? `/schedule?date=${date}`: '/schedule';
     let baseQuery = `INSERT INTO nhl_games (id, gameDate, homeTeamId, awayTeamId, gameType, season, gameStatus, formatted_date) VALUES `
     const formatted_date = date ? date : moment().format('YYYY-MM-DD');

@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS teams(
-	id int,
+	id int PRIMARY KEY,
 	teamName varchar(255),
 	abbreviation varchar(10),
 	firstYearOfPlay YEAR
@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS players(
 CREATE TABLE IF NOT EXISTS nhl_games(
     id int PRIMARY KEY,
     gameDate DATE,
-    formattedDate VARCHAR(255),
+    formattedDate VARCHAR(15),
     homeTeamId int,
     awayTeamId int,
     gameType VARCHAR(1),
@@ -46,11 +46,3 @@ CREATE TABLE IF NOT EXISTS nhl_game_player_meta(
     FOREIGN KEY (teamId) REFERENCES teams(id),
     FOREIGN KEY (gameId) REFERENCES nhl_games(id)
 )
-/*
-Assists
-Goals
-Hits
-Points
-Penalty Minutes
-(etc.)
-*/

@@ -10,9 +10,7 @@ describe('Ensure that status updates occur properly when games statuses change '
     beforeEach(() => {
         axiosInstance.get = jest.fn();
         axiosInstance.get.mockImplementation(() => Promise.resolve({ 
-        data: {
-            
-         }
+            data: {}
         }));
     });
     test('checkGameStartStatuses:: It should update game status once the game is live', () => {
@@ -177,6 +175,16 @@ describe('Ensure that valid update rows are furnished', () => {
                             players: []
                         }
                     }
+                },
+                linescore: {
+                    teams: {
+                        home: {
+                            goals: 3
+                        },
+                        away: {
+                            goals: 4
+                        }
+                    }
                 }
             }
          }
@@ -184,12 +192,8 @@ describe('Ensure that valid update rows are furnished', () => {
     });
     test('checkForGameDataUpdates:: It should return a list of SQL rows for update when player entries differ', async () => {
         const db = jest.mock();
-        db.all = jest.fn();
-        db.all.mockImplementation(() => {
-            Promise.resolve({
-                error: null,
-                updates: 1
-            });
+        db.all = jest.fn().mockImplementation((sql, callback) => {
+            callback(null, { changes: 1 } );
         });
         const playerToTest =  mockLiveFeedData.liveData.boxscore.teams.home.players.ID8477947;
         let mpPlayerEntries = {};
